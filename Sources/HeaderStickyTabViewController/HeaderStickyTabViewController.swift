@@ -33,8 +33,8 @@ open class HeaderStickyTabViewController: UIViewController {
     public var viewControllers: [HeaderStickyTabChildViewController] = [EmptyChildViewController(style: .plain)]
     
     private var headerViewTopAnchorConstraint: NSLayoutConstraint = NSLayoutConstraint()
-    private var verticalScrollTopInset: CGFloat = 0
-    private var horizontalScrollView = UIScrollView()
+    public private(set) var verticalScrollTopInset: CGFloat = 0
+    public private(set) var horizontalScrollView = UIScrollView()
     private var contentOffsetObservers: [NSKeyValueObservation] = []
     
     public override func loadView() {
@@ -43,7 +43,7 @@ open class HeaderStickyTabViewController: UIViewController {
         horizontalScrollView.isDirectionalLockEnabled = true
         horizontalScrollView.translatesAutoresizingMaskIntoConstraints = false
         horizontalScrollView.contentInsetAdjustmentBehavior = .never
-        horizontalScrollView.backgroundColor = .yellow
+        horizontalScrollView.backgroundColor = .clear
         horizontalScrollView.isPagingEnabled = true
         self.view.addSubview(horizontalScrollView)
         
@@ -106,19 +106,25 @@ open class HeaderStickyTabViewController: UIViewController {
     
     open override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        
-        if verticalScrollTopInset == 0 {
-            verticalScrollTopInset = tabView.frame.maxY
-            
+
+        let newInset = tabView.frame.maxY
+
+        // Update insets when they change (not just the first time)
+        if newInset != verticalScrollTopInset && newInset > 0 {
+            let isInitialSetup = verticalScrollTopInset == 0
+            verticalScrollTopInset = newInset
+
             viewControllers.forEach { (vc) in
                 vc.scrollView.contentInsetAdjustmentBehavior = .never
                 vc.scrollView.contentInset.top = verticalScrollTopInset
-                // vc.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
                 vc.scrollView.verticalScrollIndicatorInsets.top = verticalScrollTopInset
-                vc.scrollView.setContentOffset(CGPoint(x: 0, y: -verticalScrollTopInset), animated: false)
+
+                // Only set initial content offset on first setup
+                if isInitialSetup {
+                    vc.scrollView.setContentOffset(CGPoint(x: 0, y: -verticalScrollTopInset), animated: false)
+                }
             }
         }
-        
     }
 
     func addChildViewControllers(_ childVCs: [HeaderStickyTabChildViewController]) {
@@ -173,10 +179,8 @@ open class HeaderStickyTabViewController: UIViewController {
      */
     open func childDidScroll(child: HeaderStickyTabChildViewController, childIndex: Int, yOffset: CGFloat) {
         // push the header around based on the content offset of the child's scroll view
+        // Update constraint directly without animation for smooth 1:1 scroll tracking
         self.headerViewTopAnchorConstraint.constant = -(yOffset + self.verticalScrollTopInset)
-        UIView.animate(withDuration: 0.2) {
-            self.view.layoutIfNeeded()
-        }
     }
 }
 
@@ -213,8 +217,8 @@ class EmptyHeaderView: UIView {
     }
     
     private func setupView() {
-        backgroundColor = .blue
-        
+        backgroundColor = .systemBackground
+
         NSLayoutConstraint.activate([
             self.heightAnchor.constraint(equalToConstant: 200)
         ])
@@ -260,7 +264,7 @@ class PlainTabView: UIView, StickyTabView {
     }
     
     private func setupView() {
-        backgroundColor = .red
+        backgroundColor = .systemBackground
         addSubview(contentView)
         setupLayout()
     }
@@ -295,7 +299,7 @@ class EmptyChildViewController: UITableViewController, HeaderStickyTabChildViewC
     var data: [String] =  []
     
     override func viewDidLoad() {
-        self.tableView.backgroundColor = .cyan
+        self.tableView.backgroundColor = .systemBackground
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
         self.tableView.insetsContentViewsToSafeArea = false
     }
