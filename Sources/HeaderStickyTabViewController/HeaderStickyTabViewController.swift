@@ -81,63 +81,14 @@ open class HeaderStickyTabViewController: UIViewController {
         tabView.indexSelectionDelegate = self
 
         addChildViewControllers(self.viewControllers)
-
-        // Add pan gesture recognizers to header and tab to forward vertical swipes to child scroll views
-        // This mimics SwiftUI's simultaneousGesture behavior
-        let headerPan = UIPanGestureRecognizer(target: self, action: #selector(handleHeaderPan(_:)))
-        headerPan.delegate = self
-        headerView.addGestureRecognizer(headerPan)
-
-        let tabPan = UIPanGestureRecognizer(target: self, action: #selector(handleHeaderPan(_:)))
-        tabPan.delegate = self
-        tabView.addGestureRecognizer(tabPan)
-    }
-
-    /// Forward vertical pan gestures from header/tab to the active child scroll view
-    @objc private func handleHeaderPan(_ gesture: UIPanGestureRecognizer) {
-        let currentPage = getPage(of: horizontalScrollView)
-        guard currentPage < viewControllers.count else { return }
-        let childScrollView = viewControllers[currentPage].scrollView
-
-        let translation = gesture.translation(in: view)
-
-        switch gesture.state {
-        case .changed:
-            // Adjust child scroll view's content offset based on vertical pan
-            var newOffset = childScrollView.contentOffset
-            newOffset.y -= translation.y
-
-            // Clamp to valid range (prevent over-scrolling)
-            let minOffset = -childScrollView.contentInset.top
-            let maxOffset = max(childScrollView.contentSize.height - childScrollView.bounds.height + childScrollView.contentInset.bottom, minOffset)
-            newOffset.y = max(minOffset, min(maxOffset, newOffset.y))
-
-            childScrollView.setContentOffset(newOffset, animated: false)
-            gesture.setTranslation(.zero, in: view)
-        case .ended, .cancelled:
-            // Add deceleration behavior
-            let velocity = gesture.velocity(in: view)
-            if abs(velocity.y) > 100 {
-                // Apply momentum scrolling
-                var targetOffset = childScrollView.contentOffset
-                targetOffset.y -= velocity.y * 0.15 // Deceleration factor
-
-                let minOffset = -childScrollView.contentInset.top
-                let maxOffset = max(childScrollView.contentSize.height - childScrollView.bounds.height + childScrollView.contentInset.bottom, minOffset)
-                targetOffset.y = max(minOffset, min(maxOffset, targetOffset.y))
-
-                UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseOut, .allowUserInteraction]) {
-                    childScrollView.setContentOffset(targetOffset, animated: false)
-                }
-            }
-        default:
-            break
-        }
     }
     
     open override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        
+
+        // Set initial passthrough target
+        updatePassthroughTargets(for: 0)
+
         // observe the content offset of the children's scroll views
         viewControllers.enumerated().forEach { (index, vc) in
             contentOffsetObservers.append(vc.scrollView.observe(\UIScrollView.contentOffset, options: .new) { (scrollView, change) in
@@ -216,6 +167,25 @@ open class HeaderStickyTabViewController: UIViewController {
     open func didChangePage(_ page: Int) {
         horizontalScrollView.setContentOffset(CGPoint(x: CGFloat(page) * horizontalScrollView.frame.width, y: 0), animated: true) // scroll the horizontal view to the selected page
          self.tabView.didChangeTab(to: page) // notify the tab view that page changes because user scroll to left or right
+
+        // Update passthrough targets for touch forwarding
+        updatePassthroughTargets(for: page)
+    }
+
+    /// Update the passthrough target for header and tab views to forward touches to the current child scroll view
+    private func updatePassthroughTargets(for page: Int) {
+        guard page < viewControllers.count else { return }
+        let childScrollView = viewControllers[page].scrollView
+
+        // Update header passthrough if it supports it
+        if let passthroughHeader = headerView as? TouchPassthroughView {
+            passthroughHeader.passthroughTarget = childScrollView
+        }
+
+        // Update tab passthrough if it supports it
+        if let passthroughTab = tabView as? TabPassthroughView {
+            passthroughTab.passthroughTarget = childScrollView
+        }
     }
     
     /**
@@ -249,18 +219,60 @@ extension HeaderStickyTabViewController: UIScrollViewDelegate {
     }
 }
 
-extension HeaderStickyTabViewController: UIGestureRecognizerDelegate {
-    /// Allow header/tab pan gestures to work simultaneously with child scroll view gestures
-    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        return true
-    }
+/**
+ A view that passes through touches to views beneath it.
+ Subviews (like buttons) still receive their touches, but the view itself
+ becomes transparent to touches - allowing scroll views beneath to scroll.
 
-    /// Only recognize vertical pans (let horizontal swipes pass through for tab switching)
-    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let panGesture = gestureRecognizer as? UIPanGestureRecognizer else { return true }
-        let velocity = panGesture.velocity(in: view)
-        // Only begin if vertical component is greater than horizontal (vertical swipe)
-        return abs(velocity.y) > abs(velocity.x)
+ Based on: https://khanlou.com/2018/09/hacking-hit-tests/
+ */
+open class TouchPassthroughView: UIView {
+    /// The scroll view to forward touches to (set by HeaderStickyTabViewController)
+    public weak var passthroughTarget: UIScrollView?
+
+    open override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        // First, let subviews handle the hit test
+        let hitView = super.hitTest(point, with: event)
+
+        // If a subview was hit, let it handle the touch
+        if hitView != self {
+            return hitView
+        }
+
+        // If this view itself was hit (not a subview), pass through to target
+        if let target = passthroughTarget {
+            let convertedPoint = convert(point, to: target)
+            return target.hitTest(convertedPoint, with: event)
+        }
+
+        // No target set - pass through by returning nil
+        return nil
+    }
+}
+
+/**
+ Wrapper for tab views that allows vertical drags to pass through while
+ still allowing taps on tab buttons.
+ */
+open class TabPassthroughView: UIView {
+    /// The scroll view to forward vertical drags to
+    public weak var passthroughTarget: UIScrollView?
+
+    open override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hitView = super.hitTest(point, with: event)
+
+        // If a subview (like a button) was hit, let it handle the touch
+        if hitView != self {
+            return hitView
+        }
+
+        // Pass through to target scroll view
+        if let target = passthroughTarget {
+            let convertedPoint = convert(point, to: target)
+            return target.hitTest(convertedPoint, with: event)
+        }
+
+        return nil
     }
 }
 
