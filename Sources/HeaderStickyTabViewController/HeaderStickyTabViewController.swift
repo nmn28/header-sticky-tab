@@ -107,22 +107,14 @@ open class HeaderStickyTabViewController: UIViewController {
     open override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
 
-        let newInset = tabView.frame.maxY
-
-        // Update insets when they change (not just the first time)
-        if newInset != verticalScrollTopInset && newInset > 0 {
-            let isInitialSetup = verticalScrollTopInset == 0
-            verticalScrollTopInset = newInset
+        if verticalScrollTopInset == 0 {
+            verticalScrollTopInset = tabView.frame.maxY
 
             viewControllers.forEach { (vc) in
                 vc.scrollView.contentInsetAdjustmentBehavior = .never
                 vc.scrollView.contentInset.top = verticalScrollTopInset
                 vc.scrollView.verticalScrollIndicatorInsets.top = verticalScrollTopInset
-
-                // Only set initial content offset on first setup
-                if isInitialSetup {
-                    vc.scrollView.setContentOffset(CGPoint(x: 0, y: -verticalScrollTopInset), animated: false)
-                }
+                vc.scrollView.setContentOffset(CGPoint(x: 0, y: -verticalScrollTopInset), animated: false)
             }
         }
     }
@@ -179,8 +171,9 @@ open class HeaderStickyTabViewController: UIViewController {
      */
     open func childDidScroll(child: HeaderStickyTabChildViewController, childIndex: Int, yOffset: CGFloat) {
         // push the header around based on the content offset of the child's scroll view
-        // Update constraint directly without animation for smooth 1:1 scroll tracking
         self.headerViewTopAnchorConstraint.constant = -(yOffset + self.verticalScrollTopInset)
+        // Apply constraint change immediately without animation
+        self.view.layoutIfNeeded()
     }
 }
 
