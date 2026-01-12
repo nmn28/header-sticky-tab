@@ -31,7 +31,12 @@ open class HeaderStickyTabViewController: UIViewController {
         }
     }
     public var viewControllers: [HeaderStickyTabChildViewController] = [EmptyChildViewController(style: .plain)]
-    
+
+    /// Extra padding below the safe area top where the tab view stops when scrolling up.
+    /// Default is 50pt to provide breathing room below the navigation bar.
+    /// Set to 0 for the tab to stick directly at the safe area top.
+    public var stickyTopOffset: CGFloat = 50
+
     private var headerViewTopAnchorConstraint: NSLayoutConstraint = NSLayoutConstraint()
     public private(set) var verticalScrollTopInset: CGFloat = 0
     public private(set) var horizontalScrollView = UIScrollView()
@@ -60,7 +65,7 @@ open class HeaderStickyTabViewController: UIViewController {
             headerView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor), // pin right to superview
             headerViewTopAnchorConstraint, // constraint that will change along with scroll view
             headerView.topAnchor.constraint(lessThanOrEqualTo: self.view.topAnchor), // pin the header on the top when scroll view is pulled down
-            headerView.bottomAnchor.constraint(greaterThanOrEqualTo: self.view.safeAreaLayoutGuide.topAnchor), // [Constraint1]: pin the tab at the top when user scrolls up
+            headerView.bottomAnchor.constraint(greaterThanOrEqualTo: self.view.safeAreaLayoutGuide.topAnchor, constant: stickyTopOffset), // [Constraint1]: pin the tab at the top when user scrolls up
             
             tabView.leadingAnchor.constraint(equalTo: self.view.leadingAnchor), // pin tab to left
             tabView.trailingAnchor.constraint(equalTo: self.view.trailingAnchor), // pin tab to right
